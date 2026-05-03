@@ -1,0 +1,119 @@
+---
+- name: Disable SWAP
+  shell: sudo swapoff -a
+  become: true
+
+- name: Backup fstab
+  ansible.builtin.copy:
+    src: /etc/fstab
+    dest: /etc/fstab.bck
+    remote_src: yes
+  become: true
+
+- name: Disable SWAP in fstab
+  replace:
+    path: /etc/fstab
+    regexp: '^([a-zA-Z=\/0-9-]+\s*(swap\s*){2}\w+\s*\w*\s*\w*)$'
+    replace: '# \1'
+  become: true
+
+- name: Get / rootpath  mounted Source device
+  shell: mount |grep -E "\s/\s"|awk '{print $3}'
+  register: rootdevice
+
+- name:  Get / rootpath  mounted File system
+  shell: mount |grep -E "\s/\s"|awk '{print $5}'
+  register: "rootfs"
+  check_mode: true
+- debug:
+    msg: "Validate the / mount output: {{ rootdevice.stdout }}"
+    verbosity: 1
+  check_mode: true
+
+- name: Add mount noatime options for /
+  mount:
+    path: "/"
+    src: "{{ rootdevice.stdout }}"
+    fstype: "{{ rootfs.stdout }}"
+    opts: noatime
+    state: remounted
+  when: rootdevice.stdout == "/"
+  check_mode: true
+
+- name: "Search for noatime on /etc/fstab"
+  shell: grep -E '^([^#]+\s+?)(/\s+)([A-Za-z0-9]+\s*)([^#]*\s+)([^#]*?\s*)([0-9]{1}\s+)([0-9]{1})$' /etc/fstab | { grep noatime || true; }
+  register: noatime
+  become: true
+  ignore_errors: true
+- debug:
+    msg: "{{ noatime }}"
+    verbosity: 1
+- name: '/etc/fstab: Set opt "noatime" for mount point /'
+  lineinfile:
+    path: /etc/fstab
+    backup: yes
+    backrefs: yes
+    regexp: '^([^#]+\s+?)(/\s+)([A-Za-z0-9]+\s*)([^#]*\s+)([^#]*?\s*)([0-9]{1}\s+)([0-9]{1})$'
+    line: '\1\2\3noatime,\4\5\6\7'
+  register: fstab
+  become: true
+  when: noatime.stdout == ""
+- debug:
+    msg: "{{ fstab }}"
+    verbosity: 1
+
+- name: 'If / changed, remount'
+  command: 'mount -o remount /'
+  when: fstab.changed
+  become: true
+  ignore_errors: true
+  register: mount
+- debug:
+    msg: "{{ mount }}"
+    verbosity: 1
+
+- name: Restore /etc/fstab in case remount fails.
+  ansible.builtin.copy:
+    src: /etc/fstab.bck
+    dest: /etc/fstab
+    remote_src: yes
+  when: mount.stdout| default("")  != "" and mount.skipped == false
+  become: true
+  register: restore
+- debug:
+    msg: "{{ restore }}"
+    verbosity: 1
+
+# This is probably a bad idea. Commenting out so a decision can be reached on whether to delete
+#- name: Checking GRUB cmdline for mitigations=off options
+#  shell: grep -E '^GRUB_CMDLINE_LINUX=' /etc/default/grub| { grep  "mitigations=off" || true; }
+#  register: grub_cfg_grep
+#  ignore_errors: true
+#  become: true
+#- debug:
+#    msg: "{{ grub_cfg_grep }}"
+#    verbosity: 1
+
+#- name: Configuring GRUB cmdline to add mitigations=off if need be
+#  replace:
+#    path: '/etc/default/grub'
+#    regexp: '^GRUB_CMDLINE_LINUX="(.*)"$'
+#    replace: 'GRUB_CMDLINE_LINUX="\1 mitigations=off"'
+#  when: inventory_hostname in groups["baremetal_nodes"] and (grub_cfg_grep.stdout == '')
+#  become: true
+
+#- name: update-grub
+#  shell: update-grub
+#  when: inventory_hostname in groups["baremetal_nodes"] and  (grub_cfg_grep.stdout == '')
+#  become: true
+
+#- name: Reboot if baremetal and GRUB options changed
+#  ansible.builtin.reboot:
+#    msg: "Reboot initiated by Ansible"
+#    connect_timeout: 5
+#    reboot_timeout: 600
+#    pre_reboot_delay: 0
+#    post_reboot_delay: 60
+#    test_command: whoami
+#  when: inventory_hostname in groups["baremetal_nodes"] and (grub_cfg_grep.stdout == '')
+#  become: true

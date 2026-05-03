@@ -1,0 +1,24 @@
+---
+- name: Get current username
+  command: echo $HOME
+  register: whoami
+
+- name: Install VIM
+  apt:
+    update_cache: yes
+    pkg:
+    - vim
+  become: true
+
+- name: Create .vimrc for user
+  template:
+    src: vimrc.j2
+    dest: "{{ whoami.stdout }}/.vimrc"
+    backup: yes
+
+- name: Create .vimrc for root
+  template:
+    src: vimrc.j2
+    dest: "/root/.vimrc"
+    backup: yes
+  become: true

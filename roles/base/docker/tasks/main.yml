@@ -1,0 +1,72 @@
+---
+- name: Install packages
+  apt:
+    name:
+    - ca-certificates
+    - curl
+    - gnupg
+    - lsb-release
+    update_cache: yes
+    cache_valid_time: 86400
+  become: true
+
+- name: Create a directory if it does not exist
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+  become: true
+
+- name: Add the GPG key for Docker
+  shell: 'curl -fsSL -m10 https://download.docker.com/linux/debian/gpg | gpg --batch --dearmor -o /etc/apt/keyrings/docker.gpg'
+  become: true
+  async: 10
+  poll: 10
+  args:
+    creates: /etc/apt/keyrings/docker.gpg
+
+- name: Get architecture
+  command: dpkg --print-architecture
+  register: env_arch
+
+- name: Get release codename
+  command: lsb_release -cs
+  register: env_codename
+
+- name: Add docker repo
+  apt_repository:
+    repo: "deb [arch={{ env_arch.stdout }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian {{ env_codename.stdout }} stable"
+    state: present
+  become: true
+
+- name: Install docker
+  apt:
+    name:
+    - docker-ce
+    - docker-ce-cli
+    - containerd.io
+    - docker-compose-plugin
+    update_cache: yes
+  become: true
+
+- name: apt dist-upgrade
+  apt:
+    upgrade: dist
+  become: true
+
+- name: Get current home
+  command: echo $HOME
+  register: user_home
+
+- name: Get current username
+  command: whoami
+  register: whoami
+
+- name: Add current user to docker group
+  user:
+    name: "{{ whoami.stdout }}"
+    groups: docker
+    append: yes
+  become: true
+
+- name: Reset SSH connection
+  meta: reset_connection

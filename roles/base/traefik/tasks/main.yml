@@ -1,0 +1,70 @@
+---
+- name: Install git and dbus
+  apt:
+    name:
+    - git
+    - dbus
+    update_cache: yes
+    cache_valid_time: 86400
+  become: true
+
+- name: Start service dbus, if not started
+  ansible.builtin.service:
+    name: dbus.socket
+    state: started
+  become: true
+
+- name: clone repo
+  ansible.builtin.git:
+    repo: https://github.com/CryptoManufaktur-io/base-docker-environment.git
+    dest: ~/traefik
+    version: main
+
+- name: Check if .env file exists
+  ansible.builtin.stat:
+    path: "~/traefik/.env"
+  register: env_file_status
+
+- name: Create .env file
+  ansible.builtin.copy:
+    src: "~/traefik/default.env"
+    dest: "~/traefik/.env"
+    remote_src: true
+  when: not env_file_status.stat.exists
+
+- name: set group variables
+  ansible.builtin.lineinfile:
+    path: "~/traefik/.env"
+    regexp: '^{{ item.key }}='
+    line: "{{ item.key }}={{ item.value }}"
+  loop: "{{ traefik_group_env_variables }}"
+  when: traefik_group_env_variables is defined
+
+- name: set variables
+  ansible.builtin.lineinfile:
+    path: "~/traefik/.env"
+    regexp: '^{{ item.key }}='
+    line: "{{ item.key }}={{ item.value }}"
+  loop: "{{ traefik_env_variables }}"
+  when: traefik_env_variables is defined
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname_short }}"
+  become: true
+
+- name: Print hostname
+  debug:
+    msg: "Hostname set to {{ inventory_hostname_short }}"
+
+# Switched to Alloy, adjust
+#- name: Deploy custom-prom.yml file
+#  ansible.builtin.template:
+#    src: custom-prom.yml.j2
+#    dest: ~/traefik/prometheus/custom-prom.yml
+#  when: traefik_prom_environment is defined
+
+- name: Start traefik
+  ansible.builtin.shell: ./ethd up
+  args:
+    chdir: ~/traefik

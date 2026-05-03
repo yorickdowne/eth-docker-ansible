@@ -1,0 +1,15 @@
+- name: Create template enable-autoupdate.sh file
+  template:
+    src: enable-autoupdate.sh.j2
+    dest: /tmp/enable-autoupdate.sh
+    mode: 0744
+
+- name: Print REBOOT_TIME
+  debug:
+    msg: "upgrades_REBOOT_AT={{ upgrades_REBOOT_AT }}"
+
+- name: Run /tmp/enable-autoupdate.sh script
+  ansible.builtin.shell: /tmp/enable-autoupdate.sh
+  become: true
+  args:
+    creates: /etc/apt/uu_success

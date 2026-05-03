@@ -1,0 +1,19 @@
+---
+- name: Install msmtp-mta
+  apt:
+    name:
+    - msmtp-mta
+    update_cache: yes
+    cache_valid_time: 86400
+  become: true
+- name: Create /etc/msmtprc
+  template:
+    src: .msmtprc.j2
+    dest: /etc/msmtprc
+  become: true
+- name: Create /etc/aliases
+  ansible.builtin.copy:
+    dest: /etc/aliases
+    content: "default: {{upgrades_EMAIL_TO}}"
+    mode: 0644
+  become: true

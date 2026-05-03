@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+UU_CONF={{upgrades_UU_CONF}}
+UU_START={{upgrades_UU_START}}
+EMAIL_TO={{upgrades_EMAIL_TO}}
+EMAIL={{upgrades_EMAIL}}
+REBOOT={{upgrades_REBOOT_AT}}
+TZ=$(cat /etc/timezone)
+
+install_packages() {
+    apt-get update && apt-get install -y unattended-upgrades
+}
+
+configure_uu() {
+    sed -i 's~\(//\)\(\s*"origin=Debian,codename=\${distro_codename}-updates";\)~\2~' ${UU_CONF}
+    sed -i '/.*Archive or Suite.*/i\ \ \ \ \ \ \ \ "origin=Docker";' ${UU_CONF}
+    sed -i "s~^\(Unattended-Upgrade::Mail\s*\)\(\".*\"\);~\1\"${EMAIL_TO}\";~" ${UU_CONF}
+    sed -i "s~\(//\)\(Unattended-Upgrade::Mail\s*\)\(\"\"\);~\2\"${EMAIL_TO}\";~" ${UU_CONF}
+    sed -i "s~\(//\)\(Unattended-Upgrade::MailReport\s*\)\(\".*\"\);~\2\"only-on-error\";~" ${UU_CONF}
+    sed -i "s~\(//\)\(Unattended-Upgrade::Remove-Unused-Kernel-Packages\s*\)\(\".*\"\);~\2\"true\";~" ${UU_CONF}
+    sed -i "s~\(//\)\(Unattended-Upgrade::Remove-New-Unused-Dependencies\s*\)\(\".*\"\);~\2\"true\";~" ${UU_CONF}
+    sed -i "s~\(//\)\(Unattended-Upgrade::Automatic-Reboot\s*\)\(\".*\"\);~\2\"true\";~" ${UU_CONF}
+    sed -i "s~^\(Unattended-Upgrade::Automatic-Reboot-Time\s*\)\(\".*\"\);~\1\"${REBOOT}\";~" ${UU_CONF}
+    sed -i "s~\(//\)\(Unattended-Upgrade::Automatic-Reboot-Time\s*\)\(\".*\"\);~\2\"${REBOOT}\";~" ${UU_CONF}
+    cat > ${UU_START} << EOF
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::CleanInterval "7";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+    echo ""
+    echo "Unattended upgrades has been configured with automatic reboot at ${REBOOT} ${TZ} and email on error to ${EMAIL_TO}"
+    echo ""
+}
+
+if [ "${EUID}" -ne 0 ]; then
+    exec sudo -E "$BASH_SOURCE"
+fi
+
+install_packages
+configure_uu
+touch /etc/apt/uu_success

@@ -1,0 +1,51 @@
+---
+- name: Install ufw
+  apt:
+    name:
+    - ufw
+    state: present
+    update_cache: yes
+    cache_valid_time: 86400
+  become: true
+
+- name: Allow access from other nodes to this host
+  community.general.ufw:
+    rule: allow
+    src: '{{ item.cidr }}'
+    port: '{{ item.port }}'
+    proto: '{{ item.protocol }}'
+    comment: '{{ item.description }}'
+  loop: '{{ ufw.allow }}'
+  become: true
+  when: ufw.allow is defined
+
+- name: Allow access from additional nodes to this host
+  community.general.ufw:
+    rule: allow
+    src: '{{ item.cidr }}'
+    port: '{{ item.port }}'
+    proto: '{{ item.protocol }}'
+    comment: '{{ item.description }}'
+  loop: '{{ ufw_extra_rules.allow }}'
+  become: true
+  when: ufw_extra_rules.allow is defined
+
+- name: Delete deny rule to port 443
+  community.general.ufw:
+    delete: true
+    rule: deny
+    port: '443'
+    proto: tcp
+  become: true
+
+- name: Deny all access to port 443
+  community.general.ufw:
+    rule: deny
+    port: '443'
+    proto: tcp
+  become: true
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+  become: true
